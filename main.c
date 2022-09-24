@@ -1,5 +1,25 @@
 #include "main.h"
 
+bool loadFile(const char* filename, void* memory)
+{
+    UNREFERENCED_PARAMETER(memory);
+    bool result = true;
+    FILE *f = fopen(filename, "r");
+    if (f)
+    {
+        printf("File opened: %s\n", filename);
+        char line[512];
+        while(fgets(line, _countof(line), f) != NULL) {
+            printf("%s\n", line);
+        }
+    } else {
+        printf("File open failed: %s\n", filename);
+        result = false;
+    }
+
+    return result;
+}
+
 int APIENTRY WinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -7,7 +27,6 @@ int APIENTRY WinMain(
     _In_ int       nShowCmd
 )
 {
-    UNREFERENCED_PARAMETER(hInstance);
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
     UNREFERENCED_PARAMETER(nShowCmd);
@@ -17,6 +36,9 @@ int APIENTRY WinMain(
         MessageBoxA(NULL, "Could not create window!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         exit(1);
     }
+
+    void* m = 0;
+    loadFile("test.ppm", m);
 
     bool bRet;
     MSG message;

@@ -1,5 +1,7 @@
 #pragma once
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #pragma warning(push, 3)
 #include <windows.h>
 #pragma warning(pop)
