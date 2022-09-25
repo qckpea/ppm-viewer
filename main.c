@@ -1,24 +1,7 @@
 #include "main.h"
 
-bool loadFile(const char* filename, void* memory)
-{
-    UNREFERENCED_PARAMETER(memory);
-    bool result = true;
-    FILE *f = fopen(filename, "r");
-    if (f)
-    {
-        printf("File opened: %s\n", filename);
-        char line[512];
-        while(fgets(line, _countof(line), f) != NULL) {
-            printf("%s\n", line);
-        }
-    } else {
-        printf("File open failed: %s\n", filename);
-        result = false;
-    }
-
-    return result;
-}
+#define MAXBUFLEN 100000
+char gSource[MAXBUFLEN];
 
 int APIENTRY WinMain(
     _In_ HINSTANCE hInstance,
@@ -37,8 +20,7 @@ int APIENTRY WinMain(
         exit(1);
     }
 
-    void* m = 0;
-    loadFile("test.ppm", m);
+    loadFile("test.ppm", gSource);
 
     bool bRet;
     MSG message;
@@ -113,3 +95,22 @@ Exit:
     return result;
 }
 
+bool loadFile(const char* filename, char *buffer)
+{
+    bool result = true;
+    FILE *fp = fopen(filename, "r");
+    if (fp)
+    {
+        size_t newLen = fread(buffer, sizeof(char), MAXBUFLEN, fp);
+        if ( ferror( fp ) != 0 ) {
+            printf("[Error] Reading file: %s\n", filename);
+        } else {
+            buffer[newLen++] = '\0';
+        }
+    } else {
+        printf("[Error] Could not open file: %s\n", filename);
+        result = false;
+    }
+
+    return result;
+}
