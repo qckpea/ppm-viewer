@@ -1,7 +1,8 @@
 #include "main.h"
 
 #define MAXBUFLEN 100000
-char gSource[MAXBUFLEN];
+char gSource[MAX_BUF_LEN];
+PPM gPPM;
 
 int APIENTRY WinMain(
     _In_ HINSTANCE hInstance,
@@ -21,6 +22,7 @@ int APIENTRY WinMain(
     }
 
     loadFile("test.ppm", gSource);
+    parsePPM(gSource, &gPPM);
 
     bool bRet;
     MSG message;
@@ -65,7 +67,7 @@ DWORD CreateMainWindow(HINSTANCE instance) {
     windowClass.lpszClassName = "PPMViewerWindowClass";
 
     if (RegisterClassA(&windowClass) == 0) {
-        printf("Error: Could not register window class!\n");
+        MessageBoxA(NULL, "Could not register window class!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         result = GetLastError();
         goto Exit;
     }
@@ -86,7 +88,7 @@ DWORD CreateMainWindow(HINSTANCE instance) {
     );
 
     if (gWindowHandler == NULL) {
-        printf("Error: Could not create window!\n");
+        MessageBoxA(NULL, "Could not create window!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         result = GetLastError();
         goto Exit;
     }
@@ -101,16 +103,97 @@ bool loadFile(const char* filename, char *buffer)
     FILE *fp = fopen(filename, "r");
     if (fp)
     {
-        size_t newLen = fread(buffer, sizeof(char), MAXBUFLEN, fp);
+        size_t newLen = fread(buffer, sizeof(char), MAX_BUF_LEN, fp);
         if ( ferror( fp ) != 0 ) {
-            printf("[Error] Reading file: %s\n", filename);
+            MessageBoxA(NULL, "Could not read the file content!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         } else {
             buffer[newLen++] = '\0';
         }
     } else {
-        printf("[Error] Could not open file: %s\n", filename);
+        MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         result = false;
     }
 
     return result;
+}
+
+void parsePPM(const char* stream, PPM *result)
+{  
+    // header
+    result->header[0] = *(stream++);
+    if (result->header[0] != 'P') {
+        MessageBoxA(NULL, "Invalid file header!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+    }
+    result->header[1] = *(stream++);
+    
+   
+   // width
+    while(!isdigit(*stream))
+    {
+        stream++;
+    }
+
+    uint32 width = 0;
+    while (isdigit(*stream)) {
+        width *= 10;
+        width += *stream++ - '0';
+    }
+
+    result->width = width;
+
+    // height
+    while (!isdigit(*stream))
+    {
+        stream++;
+    }
+
+    uint32 height = 0;
+    while (isdigit(*stream)) {
+        height *= 10;
+        height += *stream++ - '0';
+    }
+
+    result->height = height;
+       
+    // max color value
+    while (!isdigit(*stream))
+    {
+        stream++;
+    }
+
+    uint32 maxColorVal = 0;
+    while (isdigit(*stream)) {
+        maxColorVal *= 10;
+        maxColorVal += *stream++ - '0';
+    }
+
+    result->maxColorVal = maxColorVal;
+
+    // pixel data
+    uint32 count = 0;
+    uint32 pixelValues[48] = {0};
+    while (*stream)
+    {
+        if(isdigit(*stream))
+        {
+            uint32 colorVal = 0;
+            while (isdigit(*stream)) {
+                colorVal *= 10;
+                colorVal += *stream++ - '0';
+            }
+
+            if (colorVal > result->maxColorVal)
+            {
+                MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            }
+            pixelValues[count] = colorVal;
+            count++;
+        }
+        else {
+            stream++;
+        }
+    }
+
+    result->pixels = malloc(count * sizeof(uint32));
+    memcpy(result->pixels, (const void *)pixelValues, count * sizeof(uint32));
 }
