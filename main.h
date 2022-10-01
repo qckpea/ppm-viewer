@@ -20,16 +20,12 @@
 #define APP_NAME "PPM Viewer"
 #define MAX_BUF_LEN 100000
 
-char gSource[MAX_BUF_LEN];
-HWND gWindowHandler;
-bool gIsAppRunning = false;
-
 typedef struct PPM
 {
     char header[2];
     int16 _unusedPadding;
     uint32 width;
-    uint32 height;
+    int32 height;
     uint32 maxColorVal;
     void *pixels;
 } PPM;
@@ -41,7 +37,23 @@ typedef struct APP_BITMAP
     int32 _unusedPadding;
 } APP_BITMAP;
 
+typedef struct PIXEL32 {
+	uint8 blue;
+	uint8 green;
+	uint8 red;
+	uint8 alpha;
+} PIXEL32;
+
+char gSource[MAX_BUF_LEN];
+HWND gWindowHandler;
+bool gIsAppRunning = false;
+
+PPM gPPM;
+APP_BITMAP gBitmap;
+
 LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPARAM lParam);
 DWORD CreateMainWindow(HINSTANCE instance);
 bool loadFile(const char* filename, char* buffer);
 void parsePPM(const char* source, PPM *result);
+void createImageBuffer(void);
+void displayImage(void);
