@@ -85,10 +85,11 @@ LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPA
 
                     if (GetOpenFileName(&ofn) == TRUE) 
                     {
-                        loadFile(ofn.lpstrFile, gSource);
-                        parsePPM(gSource, &gPPM);
-                        createImageBuffer();
-                        SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
+                        if(loadFile(ofn.lpstrFile, gSource)) {
+                            parsePPM(gSource, &gPPM);
+                            createImageBuffer();
+                            SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
+                        }
                     }
                 }
             }
@@ -103,7 +104,7 @@ LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPA
     return result;
 }
 
-DWORD CreateMainWindow(HINSTANCE instance) {
+inline DWORD CreateMainWindow(HINSTANCE instance) {
     DWORD result = ERROR_SUCCESS;
 
     WNDCLASSA windowClass = { 0 };
@@ -146,18 +147,27 @@ Exit:
     return result;
 }
 
-bool loadFile(const char* filename, char *buffer)
+inline bool loadFile(const char* filename, char *buffer)
 {
     bool result = true;
     FILE *fp = fopen(filename, "r");
+
     if (fp)
     {
         size_t newLen = fread(buffer, sizeof(char), MAX_BUF_LEN, fp);
+        if (newLen == MAX_BUF_LEN) {
+            MessageBoxA(NULL, "File is too large!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            result = false;
+        }
         if ( ferror( fp ) != 0 ) {
             MessageBoxA(NULL, "Could not read the file content!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            result = false;
         } else {
             buffer[newLen++] = '\0';
         }
+
+        fclose(fp);
+
     } else {
         MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         result = false;
@@ -210,7 +220,7 @@ void parsePPM(const char* stream, PPM *result)
         stream++;
     }
 
-    uint32 maxColorVal = 0;
+    uint16 maxColorVal = 0;
     while (isdigit(*stream)) {
         maxColorVal *= 10;
         maxColorVal += *stream++ - '0';
@@ -221,39 +231,47 @@ void parsePPM(const char* stream, PPM *result)
     // pixel data
     uint32 count = 0;
     uint32 rgbaChanelCount = 0;
-    uint8 pixelValues[512*512] = {0};
-    while (*stream)
-    {
-        if(isdigit(*stream))
-        {
-            uint8 colorVal = 0;
-            while (isdigit(*stream)) {
-                colorVal *= 10;
-                colorVal += *stream++ - '0';
-            }
+    uint32 bufferSize = height * width * 4 * sizeof(uint8);
+    uint8 *pixelValues = malloc(bufferSize);
 
-            if (colorVal > result->maxColorVal)
-            {
-                MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            }
-            pixelValues[count] = colorVal;
-            count++;
-            rgbaChanelCount++;
-            if ((rgbaChanelCount) % 3 == 0) {
-                // add alpha manually
-                pixelValues[count++] = 255;
-            }
-        }
-        else {
+    for (uint32 i = 0; i < height * width * 3; i++) {
+        
+        while (!isdigit(*stream)) {
             stream++;
         }
+        
+        uint16 colorVal = 0;
+        while (isdigit(*stream)) {
+            colorVal *= 10;
+            colorVal += *stream++ - '0';
+        }
+
+        if (colorVal > result->maxColorVal)
+        {
+            MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        }
+
+        pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
+        
+        count++;
+        rgbaChanelCount++;
+
+        if ((rgbaChanelCount) % 3 == 0) {
+            // add alpha manually
+            pixelValues[count] = 255;
+            count++;
+        }  
     }
 
-    result->pixels = malloc(count * sizeof(uint8));
-    memcpy(result->pixels, (const void *)pixelValues, count * sizeof(uint8));
+    if (result->pixels) {
+        free(result->pixels);
+    }
+    result->pixels = malloc(bufferSize);
+    memcpy(result->pixels, (const void *)pixelValues, bufferSize);
+    free(pixelValues);
 }
 
-void createImageBuffer(void) {
+inline void createImageBuffer(void) {
     gBitmap.bitmapInfo.bmiHeader.biSize = sizeof(gBitmap.bitmapInfo.bmiHeader);
     gBitmap.bitmapInfo.bmiHeader.biWidth = gPPM.width;
     gBitmap.bitmapInfo.bmiHeader.biHeight = -gPPM.height;
@@ -267,30 +285,45 @@ void createImageBuffer(void) {
     }
 }
 
-void displayImage(void) {
-    for (uint32 i = 0; i < (gPPM.height * gPPM.width * 4); i += 4) {
-        
-            PIXEL32 pixel = {0};
-            pixel.red =   (uint8)(255.0f / gPPM.maxColorVal) * (*((uint8*)gPPM.pixels + i + 0));
-            pixel.green = (uint8)(255.0f / gPPM.maxColorVal) * (*((uint8*)gPPM.pixels + i + 1));
-            pixel.blue =  (uint8)(255.0f / gPPM.maxColorVal) * (*((uint8*)gPPM.pixels + i + 2));
-            pixel.alpha = (uint8)(255.0f / gPPM.maxColorVal) * (*((uint8*)gPPM.pixels + i + 3));
+inline void displayImage(void) {
+    if (gBitmap.memory) {
+        const uint8 channelCount = 4;
+        __m128i* p = (__m128i*)gBitmap.memory;
+        for (uint32 i = 0; i < (gPPM.height * gPPM.width * channelCount); i += (sizeof(__m128i))) {
+            
+            __m128i v = {0, 0, 0, 0};
+            uint32 count = 0;
+            for (uint32 j = i; j < (i + channelCount * sizeof(uint32)); j += channelCount) {
 
-            memset((uint8*)gBitmap.memory + i, pixel.blue, sizeof(uint8));
-            memset((uint8*)gBitmap.memory + i + 1, pixel.green, sizeof(uint8));
-            memset((uint8*)gBitmap.memory + i + 2, pixel.red, sizeof(uint8));
-            memset((uint8*)gBitmap.memory + i + 3, pixel.alpha, sizeof(uint8));
+                PIXEL32 pixel = {0};
+                pixel.red =   (*((uint8*)gPPM.pixels + j + 0));
+                pixel.green = (*((uint8*)gPPM.pixels + j + 1));
+                pixel.blue =  (*((uint8*)gPPM.pixels + j + 2));
+                pixel.alpha = (*((uint8*)gPPM.pixels + j + 3));
+
+                v.m128i_u32[count++] = (uint32)(pixel.blue  << 0)  |
+                                       (uint32)(pixel.green << 8)  |
+                                       (uint32)(pixel.red   << 16) |
+                                       (uint32)(pixel.alpha << 24) ;
+
+            }
+
+            _mm_store_si128((__m128i*)p, v);
+            p++;
+        }
+
+        HDC deviceContext = GetDC(gWindowHandler);
+
+        RECT rect;
+        GetClientRect(gWindowHandler, &rect);
+        int dX = (rect.left + rect.right) / 2 - (gPPM.width / 2);
+        int dWidth = gPPM.width;
+        int dY = (rect.top + rect.bottom) / 2 - (gPPM.height / 2);;
+        int dHeight = gPPM.height;
+        StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+
+        ReleaseDC(gWindowHandler, deviceContext);
     }
         
-    HDC deviceContext = GetDC(gWindowHandler);
-
-    RECT rect;
-    GetClientRect(gWindowHandler, &rect);
-    int dX = (rect.left + rect.right) / 2 - (gPPM.width / 2);
-    int dWidth = gPPM.width;
-    int dY = (rect.top + rect.bottom) / 2 - (gPPM.height / 2);;
-    int dHeight = gPPM.height;
-    StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
-
-    ReleaseDC(gWindowHandler, deviceContext);
+    
 }

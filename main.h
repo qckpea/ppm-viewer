@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <emmintrin.h>
 
 #define uint8 uint8_t
 #define uint16 uint16_t 
@@ -18,7 +19,7 @@
 #define int32 int32_t 
 
 #define APP_NAME "PPM Viewer"
-#define MAX_BUF_LEN 1000000
+#define MAX_BUF_LEN 100000000
 
 typedef struct PPM
 {
@@ -26,7 +27,8 @@ typedef struct PPM
     int16 _unusedPadding;
     uint32 width;
     int32 height;
-    uint32 maxColorVal;
+    uint16 maxColorVal;
+    int16 _unusedPadding2;
     void *pixels;
 } PPM;
 
