@@ -16,10 +16,6 @@ int APIENTRY WinMain(
         MessageBoxA(NULL, "Could not create window!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         exit(1);
     }
-
-    loadFile("test2.ppm", gSource);
-    parsePPM(gSource, &gPPM);
-    createImageBuffer();
    
     bool bRet;
     MSG message;
@@ -31,6 +27,7 @@ int APIENTRY WinMain(
             TranslateMessage(&message);
             DispatchMessageA(&message);
         }
+        Sleep(1);
      }
 }
 
@@ -38,15 +35,66 @@ LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPA
     LRESULT result = 0;
     switch (message)
     {
-        case WM_CLOSE: {
+        case WM_CLOSE: 
+        {
             gIsAppRunning = false;
             PostQuitMessage(0);
             break;
         }
-        case WM_PAINT: {
+        case WM_PAINT: 
+        {
             displayImage();
         }
-        default: {
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        {
+            uint32 VKCode = (uint32)wParam;
+            
+            // uint32 WasDown = ((lParam & (1 << 30)) != 0);
+            uint32 IsDown = ((lParam & (1 << 31)) == 0);
+
+            if(IsDown)
+            {
+                // bool AltKeyWasDown = (bool)(lParam & (1 << 29));
+                bool isCtrlDown = GetKeyState(VK_CONTROL);
+                
+                if((VKCode == 'O') && isCtrlDown)
+                {
+                    OPENFILENAME ofn;       // common dialog box structure
+                    char szFile[260];       // buffer for file name
+                    
+                    // Initialize OPENFILENAME
+                    ZeroMemory(&ofn, sizeof(ofn));
+                    ofn.lStructSize = sizeof(ofn);
+                    ofn.hwndOwner = gWindowHandler;
+                    ofn.lpstrFile = szFile;
+                    // Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
+                    // use the contents of szFile to initialize itself.
+                    ofn.lpstrFile[0] = '\0';
+                    ofn.nMaxFile = sizeof(szFile);
+                    ofn.lpstrFilter = "PPM\0*.PPM\0";
+                    ofn.nFilterIndex = 1;
+                    ofn.lpstrFileTitle = NULL;
+                    ofn.nMaxFileTitle = 0;
+                    ofn.lpstrInitialDir = NULL;
+                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+                    // Display the Open dialog box. 
+
+                    if (GetOpenFileName(&ofn) == TRUE) 
+                    {
+                        loadFile(ofn.lpstrFile, gSource);
+                        parsePPM(gSource, &gPPM);
+                        createImageBuffer();
+                        SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
+                    }
+                }
+            }
+        }
+        default: 
+        {
             result = DefWindowProcA(windowHandler, message, wParam, lParam);
             break;
         }
@@ -173,7 +221,7 @@ void parsePPM(const char* stream, PPM *result)
     // pixel data
     uint32 count = 0;
     uint32 rgbaChanelCount = 0;
-    uint8 pixelValues[640*426] = {0};
+    uint8 pixelValues[512*512] = {0};
     while (*stream)
     {
         if(isdigit(*stream))
@@ -233,13 +281,16 @@ void displayImage(void) {
             memset((uint8*)gBitmap.memory + i + 2, pixel.red, sizeof(uint8));
             memset((uint8*)gBitmap.memory + i + 3, pixel.alpha, sizeof(uint8));
     }
-
-    //
+        
     HDC deviceContext = GetDC(gWindowHandler);
 
     RECT rect;
     GetClientRect(gWindowHandler, &rect);
-    StretchDIBits(deviceContext, 0, 0, rect.right, rect.bottom, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+    int dX = (rect.left + rect.right) / 2 - (gPPM.width / 2);
+    int dWidth = gPPM.width;
+    int dY = (rect.top + rect.bottom) / 2 - (gPPM.height / 2);;
+    int dHeight = gPPM.height;
+    StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 
     ReleaseDC(gWindowHandler, deviceContext);
 }

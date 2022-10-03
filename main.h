@@ -18,7 +18,7 @@
 #define int32 int32_t 
 
 #define APP_NAME "PPM Viewer"
-#define MAX_BUF_LEN 100000
+#define MAX_BUF_LEN 1000000
 
 typedef struct PPM
 {
