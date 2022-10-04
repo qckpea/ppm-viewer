@@ -17,83 +17,121 @@ int APIENTRY WinMain(
         exit(1);
     }
    
-    bool bRet;
-    MSG message;
-
     gIsAppRunning = true;
     while (gIsAppRunning) {
-        while ((bRet = PeekMessageA(&message, gWindowHandler, 0, 0, PM_REMOVE)) != 0)
-        {
-            TranslateMessage(&message);
-            DispatchMessageA(&message);
-        }
+        ProcessPendingMessages();
+        displayImage();
         Sleep(1);
-     }
+    }
+
+    return 0;
+}
+
+void ProcessPendingMessages(void) {
+    MSG message;
+    while(PeekMessage(&message, 0, 0, 0, PM_REMOVE))
+    {
+        switch(message.message) {
+            case WM_QUIT:
+            case WM_CLOSE:
+            {
+                gIsAppRunning = false;
+                PostQuitMessage(0);
+                break;
+            }
+
+            case WM_PAINT:
+            {
+                displayImage();
+                break;
+            }
+            
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            {
+                uint32 VKCode = (uint32)message.wParam;
+                
+                // uint32 WasDown = ((lParam & (1 << 30)) != 0);
+                uint32 IsDown = ((message.lParam & (1 << 31)) == 0);
+
+                if(IsDown)
+                {
+                    // bool AltKeyWasDown = (bool)(lParam & (1 << 29));
+                    bool isCtrlDown = GetKeyState(VK_CONTROL);
+                    
+                    if((VKCode == 'O') && isCtrlDown)
+                    {
+                        OPENFILENAME ofn;       // common dialog box structure
+                        char szFile[260];       // buffer for file name
+                        
+                        // Initialize OPENFILENAME
+                        ZeroMemory(&ofn, sizeof(ofn));
+                        ofn.lStructSize = sizeof(ofn);
+                        ofn.hwndOwner = gWindowHandler;
+                        ofn.lpstrFile = szFile;
+                        // Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
+                        // use the contents of szFile to initialize itself.
+                        ofn.lpstrFile[0] = '\0';
+                        ofn.nMaxFile = sizeof(szFile);
+                        ofn.lpstrFilter = "PPM\0*.PPM\0";
+                        ofn.nFilterIndex = 1;
+                        ofn.lpstrFileTitle = NULL;
+                        ofn.nMaxFileTitle = 0;
+                        ofn.lpstrInitialDir = NULL;
+                        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+                        // Display the Open dialog box. 
+
+                        if (GetOpenFileName(&ofn) == TRUE) 
+                        {
+                            if(loadFile(ofn.lpstrFile, gSource)) {
+                                parsePPM(gSource, &gPPM);
+                                createImageBuffer();
+                                SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
+                            }
+                        }
+                    }
+                }
+                break;
+            }
+            case WM_MOUSEWHEEL:
+            {
+                short zDelta = GET_WHEEL_DELTA_WPARAM(message.wParam);
+                printf("%d", zDelta);
+                if (zDelta < 0) {
+                    gZoomLevel -= 0.2f;
+                    if (gZoomLevel < 0.0f) {
+                        gZoomLevel = 0.0f;
+                    }
+                } else {
+                    gZoomLevel += 0.2f;
+                    if (gZoomLevel > 3.0f) {
+                        gZoomLevel = 3.0f;
+                    }
+                }
+
+                break;
+            }
+            default:
+            {
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            } break;
+        }
+    }
 }
 
 LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPARAM lParam) {
     LRESULT result = 0;
     switch (message)
     {
-        case WM_CLOSE: 
+        case WM_DESTROY:
         {
             gIsAppRunning = false;
-            PostQuitMessage(0);
-            break;
         }
-        case WM_PAINT: 
-        {
-            displayImage();
-        }
-        case WM_SYSKEYDOWN:
-        case WM_SYSKEYUP:
-        case WM_KEYDOWN:
-        case WM_KEYUP:
-        {
-            uint32 VKCode = (uint32)wParam;
-            
-            // uint32 WasDown = ((lParam & (1 << 30)) != 0);
-            uint32 IsDown = ((lParam & (1 << 31)) == 0);
-
-            if(IsDown)
-            {
-                // bool AltKeyWasDown = (bool)(lParam & (1 << 29));
-                bool isCtrlDown = GetKeyState(VK_CONTROL);
-                
-                if((VKCode == 'O') && isCtrlDown)
-                {
-                    OPENFILENAME ofn;       // common dialog box structure
-                    char szFile[260];       // buffer for file name
-                    
-                    // Initialize OPENFILENAME
-                    ZeroMemory(&ofn, sizeof(ofn));
-                    ofn.lStructSize = sizeof(ofn);
-                    ofn.hwndOwner = gWindowHandler;
-                    ofn.lpstrFile = szFile;
-                    // Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
-                    // use the contents of szFile to initialize itself.
-                    ofn.lpstrFile[0] = '\0';
-                    ofn.nMaxFile = sizeof(szFile);
-                    ofn.lpstrFilter = "PPM\0*.PPM\0";
-                    ofn.nFilterIndex = 1;
-                    ofn.lpstrFileTitle = NULL;
-                    ofn.nMaxFileTitle = 0;
-                    ofn.lpstrInitialDir = NULL;
-                    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-
-                    // Display the Open dialog box. 
-
-                    if (GetOpenFileName(&ofn) == TRUE) 
-                    {
-                        if(loadFile(ofn.lpstrFile, gSource)) {
-                            parsePPM(gSource, &gPPM);
-                            createImageBuffer();
-                            SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
-                        }
-                    }
-                }
-            }
-        }
+        
         default: 
         {
             result = DefWindowProcA(windowHandler, message, wParam, lParam);
@@ -114,7 +152,7 @@ inline DWORD CreateMainWindow(HINSTANCE instance) {
     windowClass.hIcon = LoadIconA(instance, IDI_APPLICATION);
     windowClass.hCursor = LoadCursorA(instance, IDC_ARROW);
     windowClass.lpszClassName = "PPMViewerWindowClass";
-    windowClass.hbrBackground = CreateSolidBrush(RGB(255, 0, 255));
+    windowClass.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
 
     if (RegisterClassA(&windowClass) == 0) {
         MessageBoxA(NULL, "Could not register window class!", "Error!", MB_ICONEXCLAMATION | MB_OK);
@@ -316,10 +354,25 @@ inline void displayImage(void) {
 
         RECT rect;
         GetClientRect(gWindowHandler, &rect);
-        int dX = (rect.left + rect.right) / 2 - (gPPM.width / 2);
-        int dWidth = gPPM.width;
-        int dY = (rect.top + rect.bottom) / 2 - (gPPM.height / 2);;
-        int dHeight = gPPM.height;
+        int dX = (rect.left + rect.right) / 2 - (int)(gPPM.width * gZoomLevel / 2);
+        int dWidth = (int)(gPPM.width * gZoomLevel);
+        int dY = (rect.top + rect.bottom) / 2 - (int)(gPPM.height * gZoomLevel / 2);;
+        int dHeight = (int)(gPPM.height * gZoomLevel);
+
+        //if (dWidth < (int)rect.right) {
+            // left
+            PatBlt(deviceContext, 0, 0, dX, rect.bottom, BLACKNESS);
+            // right
+            PatBlt(deviceContext, dX + dWidth, 0, rect.right - dWidth, rect.bottom, BLACKNESS);
+        //}
+
+        //if (dHeight < (int)rect.bottom) {
+            // top
+            PatBlt(deviceContext, 0, 0, rect.right, dY, BLACKNESS);
+            // bottom
+            PatBlt(deviceContext, 0, dY + dHeight, rect.right, rect.bottom - dHeight, BLACKNESS);
+        //}
+        
         StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 
         ReleaseDC(gWindowHandler, deviceContext);

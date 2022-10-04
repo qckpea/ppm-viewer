@@ -21,6 +21,8 @@
 #define APP_NAME "PPM Viewer"
 #define MAX_BUF_LEN 100000000
 
+static float gZoomLevel = 1.0f;
+
 typedef struct PPM
 {
     char header[2];
@@ -54,6 +56,7 @@ PPM gPPM;
 APP_BITMAP gBitmap;
 
 LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPARAM lParam);
+void ProcessPendingMessages(void);
 DWORD CreateMainWindow(HINSTANCE instance);
 bool loadFile(const char* filename, char* buffer);
 void parsePPM(const char* source, PPM *result);
