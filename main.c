@@ -16,12 +16,66 @@ int APIENTRY WinMain(
         MessageBoxA(NULL, "Could not create window!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         exit(1);
     }
-   
+
+    int monitorRefreshHz = 60;
+    HDC refreshDC = GetDC(gWindowHandler);
+    int win32RefreshRate = GetDeviceCaps(refreshDC, VREFRESH);
+    ReleaseDC(gWindowHandler, refreshDC);
+    if(win32RefreshRate > 1)
+    {
+        monitorRefreshHz = win32RefreshRate;
+    }
+    float updateHz = (monitorRefreshHz / 2.0f);
+    float targetSecondsPerFrame = 1.0f / (float)updateHz;
+
+    UINT desiredSchedulerMS = 1;
+    bool isSleepGranular = (timeBeginPeriod(desiredSchedulerMS) == TIMERR_NOERROR);
+
+    LARGE_INTEGER perfCountFrequencyResult;
+    QueryPerformanceFrequency(&perfCountFrequencyResult);
+    gPerfCountFrequency = perfCountFrequencyResult.QuadPart;
+    LARGE_INTEGER lastCounter = Win32GetWallClock();
+
+    
     gIsAppRunning = true;
     while (gIsAppRunning) {
+        
         ProcessPendingMessages();
         displayImage();
-        Sleep(1);
+        
+        LARGE_INTEGER workCounter = Win32GetWallClock();
+        float secondsElapsedForFrame = Win32GetSecondsElapsed(lastCounter, workCounter);
+        
+        if(secondsElapsedForFrame < targetSecondsPerFrame)
+        {                        
+            if(isSleepGranular)
+            {
+                DWORD sleepInMS = (DWORD)(1000.0f * (targetSecondsPerFrame - secondsElapsedForFrame));
+                if(sleepInMS > 0)
+                {
+                    Sleep(sleepInMS);
+                }
+            }
+            
+            float testSecondsElapsedForFrame = Win32GetSecondsElapsed(lastCounter, Win32GetWallClock());
+            if(testSecondsElapsedForFrame < targetSecondsPerFrame)
+            {
+                // missed sleep
+            }
+            
+            while(secondsElapsedForFrame < targetSecondsPerFrame)
+            {                            
+                secondsElapsedForFrame = Win32GetSecondsElapsed(lastCounter, Win32GetWallClock());
+            }
+        }
+
+        LARGE_INTEGER endCounter = Win32GetWallClock();
+        //float elapsedMSPerFrame = 1000.0f * Win32GetSecondsElapsed(lastCounter, endCounter);
+        lastCounter = endCounter;
+
+         //char FPSBuffer[256];
+         //_snprintf(FPSBuffer, sizeof(FPSBuffer),"%.02fms/f\n", elapsedMSPerFrame );
+         //OutputDebugStringA(FPSBuffer);
     }
 
     return 0;
@@ -29,22 +83,17 @@ int APIENTRY WinMain(
 
 void ProcessPendingMessages(void) {
     MSG message;
-    while(PeekMessage(&message, 0, 0, 0, PM_REMOVE))
+    while(PeekMessageA(&message, gWindowHandler, 0, 0, PM_REMOVE))
     {
+        
         switch(message.message) {
             case WM_QUIT:
             case WM_CLOSE:
             {
                 gIsAppRunning = false;
                 PostQuitMessage(0);
-                break;
-            }
-
-            case WM_PAINT:
-            {
-                displayImage();
-                break;
-            }
+                
+            } break;
             
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
@@ -94,12 +143,11 @@ void ProcessPendingMessages(void) {
                         }
                     }
                 }
-                break;
-            }
+            } break;
+
             case WM_MOUSEWHEEL:
             {
                 short zDelta = GET_WHEEL_DELTA_WPARAM(message.wParam);
-                printf("%d", zDelta);
                 if (zDelta < 0) {
                     gZoomLevel -= 0.2f;
                     if (gZoomLevel < 0.0f) {
@@ -112,8 +160,8 @@ void ProcessPendingMessages(void) {
                     }
                 }
 
-                break;
-            }
+            } break;
+                
             default:
             {
                 TranslateMessage(&message);
@@ -127,6 +175,14 @@ LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPA
     LRESULT result = 0;
     switch (message)
     {
+        case WM_PAINT:
+        {
+            PAINTSTRUCT ps;
+            BeginPaint(gWindowHandler, &ps);
+            displayImage();
+            EndPaint(gWindowHandler, &ps);
+            break;
+        }
         case WM_DESTROY:
         {
             gIsAppRunning = false;
@@ -323,7 +379,7 @@ inline void createImageBuffer(void) {
     }
 }
 
-inline void displayImage(void) {
+void displayImage(void) {
     if (gBitmap.memory) {
         const uint8 channelCount = 4;
         __m128i* p = (__m128i*)gBitmap.memory;
@@ -359,24 +415,22 @@ inline void displayImage(void) {
         int dY = (rect.top + rect.bottom) / 2 - (int)(gPPM.height * gZoomLevel / 2);;
         int dHeight = (int)(gPPM.height * gZoomLevel);
 
-        //if (dWidth < (int)rect.right) {
+        if (rect.right > dWidth) {
             // left
-            PatBlt(deviceContext, 0, 0, dX, rect.bottom, BLACKNESS);
+            PatBlt(deviceContext, 0, dY, dX, dHeight, BLACKNESS);
             // right
-            PatBlt(deviceContext, dX + dWidth, 0, rect.right - dWidth, rect.bottom, BLACKNESS);
-        //}
+            PatBlt(deviceContext, dX + dWidth, dY, rect.right - dWidth, dHeight, BLACKNESS);
+        }
 
-        //if (dHeight < (int)rect.bottom) {
+        if (rect.bottom > dHeight) {
             // top
             PatBlt(deviceContext, 0, 0, rect.right, dY, BLACKNESS);
             // bottom
             PatBlt(deviceContext, 0, dY + dHeight, rect.right, rect.bottom - dHeight, BLACKNESS);
-        //}
+        }
         
         StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 
         ReleaseDC(gWindowHandler, deviceContext);
     }
-        
-    
 }

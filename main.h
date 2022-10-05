@@ -5,11 +5,14 @@
 #pragma warning(push, 3)
 #include <windows.h>
 #pragma warning(pop)
+#pragma warning(disable: 5045) // spectre mitigation
 
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <emmintrin.h>
+
+#include "timer.h"
 
 #define uint8 uint8_t
 #define uint16 uint16_t 
