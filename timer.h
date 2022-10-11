@@ -18,7 +18,7 @@ Win32GetSecondsElapsed(LARGE_INTEGER start, LARGE_INTEGER end)
     return(result);
 }
 
-inline FILETIME
+__forceinline FILETIME
 Win32GetLastWriteTime(const char *filename)
 {
     FILETIME LastWriteTime = {0};
