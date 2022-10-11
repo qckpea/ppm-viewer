@@ -320,6 +320,11 @@ void ParsePPM(const char* stream, PPM *result)
     // width
     while(!isdigit(*stream))
     {
+        if (*stream == '#') {
+            while(!iscntrl(*stream)) {
+                stream++;
+            }
+        }
         stream++;
     }
 
@@ -332,8 +337,13 @@ void ParsePPM(const char* stream, PPM *result)
     result->width = width;
 
     // height
-    while (!isdigit(*stream))
+    while(!isdigit(*stream))
     {
+        if (*stream == '#') {
+            while(!iscntrl(*stream)) {
+                stream++;
+            }
+        }
         stream++;
     }
 
@@ -346,8 +356,13 @@ void ParsePPM(const char* stream, PPM *result)
     result->height = height;
        
     // max color value
-    while (!isdigit(*stream))
+    while(!isdigit(*stream))
     {
+        if (*stream == '#') {
+            while(!iscntrl(*stream)) {
+                stream++;
+            }
+        }
         stream++;
     }
 
