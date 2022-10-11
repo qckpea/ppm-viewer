@@ -1,5 +1,7 @@
 #include "main.h"
 
+#define UNICODE
+
 int APIENTRY WinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -36,13 +38,12 @@ int APIENTRY WinMain(
     gPerfCountFrequency = perfCountFrequencyResult.QuadPart;
     LARGE_INTEGER lastCounter = Win32GetWallClock();
 
-    
     gIsAppRunning = true;
     while (gIsAppRunning) {
         
         ProcessPendingMessages();
-        displayImage();
-        
+        DisplayImage();
+
         LARGE_INTEGER workCounter = Win32GetWallClock();
         float secondsElapsedForFrame = Win32GetSecondsElapsed(lastCounter, workCounter);
         
@@ -54,6 +55,17 @@ int APIENTRY WinMain(
                 if(sleepInMS > 0)
                 {
                     Sleep(sleepInMS);
+
+                    if (loadedFileData.fileName && strlen(loadedFileData.fileName) > 1) {
+                        size_t fileNameLenght = strlen(loadedFileData.fileName);
+                        char* temp = malloc(fileNameLenght);
+                        strcpy(temp, loadedFileData.fileName);
+                        FILETIME newFileWriteTime = Win32GetLastWriteTime(temp);
+                        if (CompareFileTime(&newFileWriteTime, &loadedFileData.gLastFileTime) != 0)
+                        {
+                            Win32OpenFile();
+                        }
+                    }
                 }
             }
             
@@ -112,34 +124,33 @@ void ProcessPendingMessages(void) {
                     
                     if((VKCode == 'O') && isCtrlDown)
                     {
-                        OPENFILENAME ofn;       // common dialog box structure
-                        char szFile[260];       // buffer for file name
-                        
+                        OPENFILENAME openFileName; // common dialog box structure
+                        char szFile[260];       // buffer for loadedFileData name
+
                         // Initialize OPENFILENAME
-                        ZeroMemory(&ofn, sizeof(ofn));
-                        ofn.lStructSize = sizeof(ofn);
-                        ofn.hwndOwner = gWindowHandler;
-                        ofn.lpstrFile = szFile;
+                        ZeroMemory(&openFileName, sizeof(openFileName));
+                        openFileName.lStructSize = sizeof(openFileName);
+                        openFileName.hwndOwner = gWindowHandler;
+                        openFileName.lpstrFile = szFile;
                         // Set lpstrFile[0] to '\0' so that GetOpenFileName does not 
                         // use the contents of szFile to initialize itself.
-                        ofn.lpstrFile[0] = '\0';
-                        ofn.nMaxFile = sizeof(szFile);
-                        ofn.lpstrFilter = "PPM\0*.PPM\0";
-                        ofn.nFilterIndex = 1;
-                        ofn.lpstrFileTitle = NULL;
-                        ofn.nMaxFileTitle = 0;
-                        ofn.lpstrInitialDir = NULL;
-                        ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+                        openFileName.lpstrFile[0] = '\0';
+                        openFileName.nMaxFile = sizeof(szFile);
+                        openFileName.lpstrFilter = "PPM\0*.PPM\0";
+                        openFileName.nFilterIndex = 1;
+                        openFileName.lpstrFileTitle = NULL;
+                        openFileName.nMaxFileTitle = 0;
+                        openFileName.lpstrInitialDir = NULL;
+                        openFileName.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
                         // Display the Open dialog box. 
 
-                        if (GetOpenFileName(&ofn) == TRUE) 
+                        if (GetOpenFileName(&openFileName) == TRUE)
                         {
-                            if(loadFile(ofn.lpstrFile, gSource)) {
-                                parsePPM(gSource, &gPPM);
-                                createImageBuffer();
-                                SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
-                            }
+                            size_t fileNameLenght = strlen(openFileName.lpstrFile);
+                            loadedFileData.fileName = realloc((void*)loadedFileData.fileName, fileNameLenght);
+                            strcpy(loadedFileData.fileName, openFileName.lpstrFile);
+                            Win32OpenFile();
                         }
                     }
                 }
@@ -179,7 +190,7 @@ LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPA
         {
             PAINTSTRUCT ps;
             BeginPaint(gWindowHandler, &ps);
-            displayImage();
+            DisplayImage();
             EndPaint(gWindowHandler, &ps);
             break;
         }
@@ -241,36 +252,62 @@ Exit:
     return result;
 }
 
-inline bool loadFile(const char* filename, char *buffer)
+inline bool LoadFileContentIntoBuffer(const char* filename)
 {
-    bool result = true;
-    FILE *fp = fopen(filename, "r");
-
-    if (fp)
+    bool result = false;
+    
+    HANDLE FileHandle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if(FileHandle != INVALID_HANDLE_VALUE)
     {
-        size_t newLen = fread(buffer, sizeof(char), MAX_BUF_LEN, fp);
-        if (newLen == MAX_BUF_LEN) {
-            MessageBoxA(NULL, "File is too large!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            result = false;
-        }
-        if ( ferror( fp ) != 0 ) {
-            MessageBoxA(NULL, "Could not read the file content!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            result = false;
-        } else {
-            buffer[newLen++] = '\0';
-        }
+        LARGE_INTEGER FileSize;
+        if(GetFileSizeEx(FileHandle, &FileSize))
+        {
+            uint32 FileSize32 = SafeTruncateUInt64(FileSize.QuadPart);
 
-        fclose(fp);
+            if (gSource) VirtualFree(gSource, FileSize32, MEM_RELEASE);
+            gSource = VirtualAlloc(0, FileSize32, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
-    } else {
-        MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-        result = false;
+            if(gSource)
+            {
+                DWORD BytesRead;
+                if(ReadFile(FileHandle, gSource, FileSize32, &BytesRead, 0) &&
+                (FileSize32 == BytesRead))
+                {
+                    // File read successfully
+                    loadedFileData.gLastFileTime = Win32GetLastWriteTime(loadedFileData.fileName);
+                    result = true;
+                }
+                else
+                {                    
+                    // Logging
+                    MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+                    VirtualFree(gSource, 0, MEM_RELEASE);
+                }
+            }
+            else
+            {
+                // Logging
+                MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            }
+        }
+        else
+        {
+            // Logging
+            MessageBoxA(NULL, "Could not open the file!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+        }
+        
+        CloseHandle(FileHandle);
+    }
+    else
+    {
+        // Logging
+        // TODO: this path is sometimes triggered at file reload
     }
 
     return result;
 }
 
-void parsePPM(const char* stream, PPM *result)
+void ParsePPM(const char* stream, PPM *result)
 {  
     // header
     result->header[0] = *(stream++);
@@ -343,6 +380,7 @@ void parsePPM(const char* stream, PPM *result)
         if (colorVal > result->maxColorVal)
         {
             MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+            break;
         }
 
         pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
@@ -365,7 +403,7 @@ void parsePPM(const char* stream, PPM *result)
     free(pixelValues);
 }
 
-inline void createImageBuffer(void) {
+inline void CreateImageBuffer(void) {
     gBitmap.bitmapInfo.bmiHeader.biSize = sizeof(gBitmap.bitmapInfo.bmiHeader);
     gBitmap.bitmapInfo.bmiHeader.biWidth = gPPM.width;
     gBitmap.bitmapInfo.bmiHeader.biHeight = -gPPM.height;
@@ -379,7 +417,7 @@ inline void createImageBuffer(void) {
     }
 }
 
-void displayImage(void) {
+void DisplayImage(void) {
     if (gBitmap.memory) {
         const uint8 channelCount = 4;
         __m128i* p = (__m128i*)gBitmap.memory;
@@ -432,5 +470,13 @@ void displayImage(void) {
         StretchDIBits(deviceContext, dX, dY, dWidth, dHeight, 0, 0, gPPM.width, gPPM.height, gBitmap.memory, &gBitmap.bitmapInfo, DIB_RGB_COLORS, SRCCOPY);
 
         ReleaseDC(gWindowHandler, deviceContext);
+    }
+}
+
+void Win32OpenFile(void) {
+    if (LoadFileContentIntoBuffer(loadedFileData.fileName)) {
+        ParsePPM((const char*)gSource, &gPPM);
+        CreateImageBuffer();
+        SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
     }
 }

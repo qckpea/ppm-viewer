@@ -9,20 +9,13 @@
 
 #include <stdbool.h>
 #include <stdio.h>
-#include <stdint.h>
 #include <emmintrin.h>
 
 #include "timer.h"
+#include "utils.h"
 
-#define uint8 uint8_t
-#define uint16 uint16_t 
-#define uint32 uint32_t 
-#define int8 int8_t 
-#define int16 int16_t 
-#define int32 int32_t 
 
 #define APP_NAME "PPM Viewer"
-#define MAX_BUF_LEN 100000000
 
 static float gZoomLevel = 1.0f;
 
@@ -51,17 +44,25 @@ typedef struct PIXEL32 {
 	uint8 alpha;
 } PIXEL32;
 
-char gSource[MAX_BUF_LEN];
+void * gSource = 0;
 HWND gWindowHandler;
 bool gIsAppRunning = false;
 
 PPM gPPM;
 APP_BITMAP gBitmap;
 
+typedef struct LOADED_FILE_DATA {
+    FILETIME gLastFileTime;
+    char * fileName;
+} LOADED_FILE_DATA;
+
+LOADED_FILE_DATA loadedFileData = {0};
+
 LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPARAM lParam);
 void ProcessPendingMessages(void);
 DWORD CreateMainWindow(HINSTANCE instance);
-bool loadFile(const char* filename, char* buffer);
-void parsePPM(const char* source, PPM *result);
-void createImageBuffer(void);
-void displayImage(void);
+bool LoadFileContentIntoBuffer(const char* filename);
+void ParsePPM(const char* source, PPM *result);
+void CreateImageBuffer(void);
+void DisplayImage(void);
+void Win32OpenFile(void);
