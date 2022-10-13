@@ -64,5 +64,6 @@ DWORD CreateMainWindow(HINSTANCE instance);
 bool LoadFileContentIntoBuffer(const char* filename);
 void ParsePPM(const char* source, PPM *result);
 void CreateImageBuffer(void);
+void FillImageBuffer(void);
 void DisplayImage(void);
 void Win32OpenFile(void);
