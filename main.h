@@ -56,7 +56,7 @@ typedef struct LOADED_FILE_DATA {
     char * fileName;
 } LOADED_FILE_DATA;
 
-LOADED_FILE_DATA loadedFileData = {0};
+LOADED_FILE_DATA gLoadedFileData = {0};
 
 LRESULT CALLBACK WindowProc(HWND windowHandler, UINT message, WPARAM wParam, LPARAM lParam);
 void ProcessPendingMessages(void);

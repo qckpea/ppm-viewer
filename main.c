@@ -42,7 +42,6 @@ int APIENTRY WinMain(
     while (gIsAppRunning) {
         
         ProcessPendingMessages();
-        DisplayImage();
 
         LARGE_INTEGER workCounter = Win32GetWallClock();
         float secondsElapsedForFrame = Win32GetSecondsElapsed(lastCounter, workCounter);
@@ -56,14 +55,12 @@ int APIENTRY WinMain(
                 {
                     Sleep(sleepInMS);
 
-                    if (loadedFileData.fileName && strlen(loadedFileData.fileName) > 1) {
-                        size_t fileNameLenght = strlen(loadedFileData.fileName);
-                        char* temp = malloc(fileNameLenght);
-                        strcpy(temp, loadedFileData.fileName);
-                        FILETIME newFileWriteTime = Win32GetLastWriteTime(temp);
-                        if (CompareFileTime(&newFileWriteTime, &loadedFileData.gLastFileTime) != 0)
+                    if (gLoadedFileData.fileName && strlen(gLoadedFileData.fileName) > 1) {
+                        FILETIME newFileWriteTime = Win32GetLastWriteTime(gLoadedFileData.fileName);
+                        if (CompareFileTime(&newFileWriteTime, &gLoadedFileData.gLastFileTime) != 0)
                         {
                             Win32OpenFile();
+                            DisplayImage();
                         }
                     }
                 }
@@ -148,8 +145,8 @@ void ProcessPendingMessages(void) {
                         if (GetOpenFileName(&openFileName) == TRUE)
                         {
                             size_t fileNameLenght = strlen(openFileName.lpstrFile);
-                            loadedFileData.fileName = realloc((void*)loadedFileData.fileName, fileNameLenght);
-                            strcpy(loadedFileData.fileName, openFileName.lpstrFile);
+                            gLoadedFileData.fileName = realloc((void*)gLoadedFileData.fileName, fileNameLenght);
+                            strcpy(gLoadedFileData.fileName, openFileName.lpstrFile);
                             Win32OpenFile();
                         }
                     }
@@ -170,6 +167,8 @@ void ProcessPendingMessages(void) {
                         gZoomLevel = 3.0f;
                     }
                 }
+
+                InvalidateRect(gWindowHandler, NULL, FALSE);
 
             } break;
                 
@@ -274,7 +273,7 @@ inline bool LoadFileContentIntoBuffer(const char* filename)
                 (FileSize32 == BytesRead))
                 {
                     // File read successfully
-                    loadedFileData.gLastFileTime = Win32GetLastWriteTime(loadedFileData.fileName);
+                    gLoadedFileData.gLastFileTime = Win32GetLastWriteTime(gLoadedFileData.fileName);
                     result = true;
                 }
                 else
@@ -432,33 +431,35 @@ inline void CreateImageBuffer(void) {
     }
 }
 
-void DisplayImage(void) {
-    if (gBitmap.memory) {
-        const uint8 channelCount = 4;
-        __m128i* p = (__m128i*)gBitmap.memory;
-        for (uint32 i = 0; i < (gPPM.height * gPPM.width * channelCount); i += (sizeof(__m128i))) {
-            
-            __m128i v = {0, 0, 0, 0};
-            uint32 count = 0;
-            for (uint32 j = i; j < (i + channelCount * sizeof(uint32)); j += channelCount) {
+inline void FillImageBuffer(void) {
+    const uint8 channelCount = 4;
+    __m128i* p = (__m128i*)gBitmap.memory;
+    for (uint32 i = 0; i < (gPPM.height * gPPM.width * channelCount); i += (sizeof(__m128i))) {
+        
+        __m128i v = {0, 0, 0, 0};
+        uint32 count = 0;
+        for (uint32 j = i; j < (i + channelCount * sizeof(uint32)); j += channelCount) {
 
-                PIXEL32 pixel = {0};
-                pixel.red =   (*((uint8*)gPPM.pixels + j + 0));
-                pixel.green = (*((uint8*)gPPM.pixels + j + 1));
-                pixel.blue =  (*((uint8*)gPPM.pixels + j + 2));
-                pixel.alpha = (*((uint8*)gPPM.pixels + j + 3));
+            PIXEL32 pixel = {0};
+            pixel.red =   (*((uint8*)gPPM.pixels + j + 0));
+            pixel.green = (*((uint8*)gPPM.pixels + j + 1));
+            pixel.blue =  (*((uint8*)gPPM.pixels + j + 2));
+            pixel.alpha = (*((uint8*)gPPM.pixels + j + 3));
 
-                v.m128i_u32[count++] = (uint32)(pixel.blue  << 0)  |
-                                       (uint32)(pixel.green << 8)  |
-                                       (uint32)(pixel.red   << 16) |
-                                       (uint32)(pixel.alpha << 24) ;
+            v.m128i_u32[count++] = (uint32)(pixel.blue  << 0)  |
+                                    (uint32)(pixel.green << 8)  |
+                                    (uint32)(pixel.red   << 16) |
+                                    (uint32)(pixel.alpha << 24) ;
 
-            }
-
-            _mm_store_si128((__m128i*)p, v);
-            p++;
         }
 
+        _mm_store_si128((__m128i*)p, v);
+        p++;
+    }
+}
+
+void DisplayImage(void) {
+    if (gBitmap.memory) {
         HDC deviceContext = GetDC(gWindowHandler);
 
         RECT rect;
@@ -489,9 +490,10 @@ void DisplayImage(void) {
 }
 
 void Win32OpenFile(void) {
-    if (LoadFileContentIntoBuffer(loadedFileData.fileName)) {
+    if (LoadFileContentIntoBuffer(gLoadedFileData.fileName)) {
         ParsePPM((const char*)gSource, &gPPM);
         CreateImageBuffer();
+        FillImageBuffer();
         SetWindowPos(gWindowHandler, 0, 0, 0, gPPM.width, gPPM.height, SWP_NOMOVE);
     }
 }
