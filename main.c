@@ -314,8 +314,7 @@ void ParsePPM(const char* stream, PPM *result)
         MessageBoxA(NULL, "Invalid file header!", "Error!", MB_ICONEXCLAMATION | MB_OK);
     }
     result->header[1] = *(stream++);
-    
-   
+
     // width
     while(!isdigit(*stream))
     {
@@ -353,7 +352,7 @@ void ParsePPM(const char* stream, PPM *result)
     }
 
     result->height = height;
-       
+    
     // max color value
     while(!isdigit(*stream))
     {
@@ -378,35 +377,63 @@ void ParsePPM(const char* stream, PPM *result)
     uint32 rgbaChanelCount = 0;
     uint32 bufferSize = height * width * 4 * sizeof(uint8);
     uint8 *pixelValues = malloc(bufferSize);
-
-    for (uint32 i = 0; i < height * width * 3; i++) {
+    
+    // pixel data is in ascii/text format
+    if (result->header[1] == '3') {
         
-        while (!isdigit(*stream)) {
+        for (uint32 i = 0; i < height * width * 3; i++) {
+            
+            while (!isdigit(*stream)) {
+                stream++;
+            }
+            
+            uint16 colorVal = 0;
+            while (isdigit(*stream)) {
+                colorVal *= 10;
+                colorVal += *stream++ - '0';
+            }
+
+            if (colorVal > result->maxColorVal)
+            {
+                MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
+                break;
+            }
+
+            pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
+            
+            count++;
+            rgbaChanelCount++;
+
+            if ((rgbaChanelCount) % 3 == 0) {
+                // add alpha manually
+                pixelValues[count] = 255;
+                count++;
+            }  
+        }
+    } 
+    // pixel data is in binary format
+    else if (result->header[1] == '6')
+    {
+        // advance the stream to the first pixel data
+        while(!iscntrl(*stream)) {
             stream++;
         }
-        
-        uint16 colorVal = 0;
-        while (isdigit(*stream)) {
-            colorVal *= 10;
-            colorVal += *stream++ - '0';
-        }
+        stream++;
 
-        if (colorVal > result->maxColorVal)
-        {
-            MessageBoxA(NULL, "Corrupt file data! Color value is more than max color value!", "Error!", MB_ICONEXCLAMATION | MB_OK);
-            break;
-        }
-
-        pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
-        
-        count++;
-        rgbaChanelCount++;
-
-        if ((rgbaChanelCount) % 3 == 0) {
-            // add alpha manually
-            pixelValues[count] = 255;
+        // start parsing the pixel data
+        for (uint32 i = 0; i < height * width * 3; i++) {
+            uint8 colorVal = *stream++;
+            pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
+                
             count++;
-        }  
+            rgbaChanelCount++;
+
+            if ((rgbaChanelCount) % 3 == 0) {
+                // add alpha manually
+                pixelValues[count] = 255;
+                count++;
+            }  
+        }
     }
 
     if (result->pixels) {
