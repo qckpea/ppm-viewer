@@ -263,7 +263,9 @@ inline bool LoadFileContentIntoBuffer(const char* filename)
         {
             uint32 FileSize32 = SafeTruncateUInt64(FileSize.QuadPart);
 
-            if (gSource) VirtualFree(gSource, FileSize32, MEM_RELEASE);
+            if (gSource) {
+                VirtualFree(gSource, 0, MEM_RELEASE);
+            }
             gSource = VirtualAlloc(0, FileSize32, MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
 
             if(gSource)
@@ -400,7 +402,7 @@ void ParsePPM(const char* stream, PPM *result)
             }
 
             pixelValues[count] = (uint8)((255.0f / gPPM.maxColorVal) * colorVal);
-            
+
             count++;
             rgbaChanelCount++;
 
@@ -452,6 +454,9 @@ inline void CreateImageBuffer(void) {
     gBitmap.bitmapInfo.bmiHeader.biCompression = BI_RGB;
     gBitmap.bitmapInfo.bmiHeader.biPlanes = 1;
 
+    if (gBitmap.memory) {
+        VirtualFree(gBitmap.memory, 0, MEM_RELEASE);
+    }
     if ((gBitmap.memory = VirtualAlloc(NULL, gPPM.width * gPPM.height * 4, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) == NULL) {
         MessageBoxA(NULL, "Could not allocate video memory!", "Error!", MB_ICONEXCLAMATION | MB_OK);
         exit(2);
